@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Mentee {
+  id             String        @id @default(uuid())
+  name           String
+  email          String        @unique
+  externalId     String?       @unique @map("external_id")
+  phone          String?
+  status         String @default("In Progress")
+  priority       String?
+  cohortBatch    String?       @map("cohort_batch")
+  lastAttendance DateTime?     @map("last_attendance")
+  currentWeek    Int?          @map("current_week")
+  attendances    Attendance[]
+  checkInNotes   CheckInNote[]
+  poc            String?
+
+  @@map("mentees")
+}
+
+model Attendance {
+  id          String   @id @default(uuid())
+  menteeId    String   @map("mentee_id")
+  sessionDate DateTime @map("session_date") @db.Date
+  sessionType String   @map("session_type")
+  isPresent   Boolean  @map("is_present")
+  mentee      Mentee   @relation(fields: [menteeId], references: [id])
+
+  @@map("attendances")
+}
+
+model User {
+  id           String @id @default(uuid())
+  name         String
+  email        String @unique
+  passwordHash String @map("password_hash")
+  role         String
+
+  @@map("users")
+}
+
+model CheckInNote {
+  id            String   @id @default(uuid())
+  menteeId      String   @map("mentee_id")
+  timestamp     DateTime
+  noteContent   String   @map("note_content")
+  executiveName String   @map("executive_name")
+  mentee        Mentee   @relation(fields: [menteeId], references: [id])
+
+  @@map("check_in_notes")
+}
+
+model WeeklyAttendanceReport {
+  id           String   @id @default(uuid())
+  weekNumber   Int
+  cohortBatch  String
+  totalMentees Int
+  totalPresent Int
+  totalAbsent  Int
+  createdAt    DateTime @default(now())
+
+  @@unique([weekNumber, cohortBatch])
+
+  @@map("weekly_attendance_reports")
+}
