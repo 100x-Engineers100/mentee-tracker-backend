@@ -21,7 +21,17 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use(cors());
+const corsOptions = {
+  origin: [
+    "https://mentee-tracker-frontend.vercel.app/",
+    "http://localhost:8080",
+  ],
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
 
 app.get("/", (req, res) => {
   res.send("Hello from Mentee Tracker Backend!");
