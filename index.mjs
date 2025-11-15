@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 const corsOptions = {
   origin: [
-    "https://mentee-tracker-frontend.vercel.app/",
+    "https://mentee-tracker-frontend.vercel.app",
     "http://localhost:8080",
   ],
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
