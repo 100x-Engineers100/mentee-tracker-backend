@@ -5,7 +5,10 @@ import {
   getWeek,
   addWeeks,
   startOfWeek,
+  differenceInWeeks,
 } from "date-fns";
+
+const PROGRAM_START_DATE = new Date("2025-11-07T00:00:00.000Z");
 import express from "express";
 import dotenv from "dotenv";
 import axios from "axios";
@@ -350,6 +353,12 @@ app.post("/api/run-attendance-cron-manually", async (req, res) => {
       skipDuplicates: true,
     });
 
+    const today = new Date();
+    const currentWeekNumber =
+      differenceInWeeks(today, PROGRAM_START_DATE, {
+        weekStartsOn: 1,
+      }) + 1; // +1 because differenceInWeeks is 0-indexed
+
     // After creating attendance records, update mentee priorities and last attendance
     for (const menteeId of externalMenteeIdsInAttendance) {
       const mentee = await prisma.mentee.findUnique({
@@ -415,9 +424,20 @@ app.post("/api/run-attendance-cron-manually", async (req, res) => {
           return latest.sessionDate > current.sessionDate ? latest : current;
         }, recentAttendances[0]);
 
+        // Calculate attendance percentage from PROGRAM_START_DATE
+        const totalSessionsSinceProgramStart = mentee.attendances.filter(
+          (att) => new Date(att.sessionDate) >= PROGRAM_START_DATE
+        );
+
+        const presentSessionsSinceProgramStart =
+          totalSessionsSinceProgramStart.filter((att) => att.isPresent).length;
+
         let attendancePercentage = 0;
-        if (lastSessions.length > 0) {
-          attendancePercentage = (presentCount / lastSessions.length) * 100;
+        if (totalSessionsSinceProgramStart.length > 0) {
+          attendancePercentage =
+            (presentSessionsSinceProgramStart /
+              totalSessionsSinceProgramStart.length) *
+            100;
         }
 
         await prisma.mentee.update({
@@ -427,6 +447,7 @@ app.post("/api/run-attendance-cron-manually", async (req, res) => {
             lastAttendance: lastAttendance ? lastAttendance.sessionDate : null,
             attendancePercentage: attendancePercentage,
             status: "In Progress",
+            currentWeek: currentWeekNumber,
           },
         });
       }
