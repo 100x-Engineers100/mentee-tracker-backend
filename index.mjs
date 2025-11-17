@@ -415,11 +415,17 @@ app.post("/api/run-attendance-cron-manually", async (req, res) => {
           return latest.sessionDate > current.sessionDate ? latest : current;
         }, recentAttendances[0]);
 
+        let attendancePercentage = 0;
+        if (lastSessions.length > 0) {
+          attendancePercentage = (presentCount / lastSessions.length) * 100;
+        }
+
         await prisma.mentee.update({
           where: { id: mentee.id },
           data: {
             priority: priority,
             lastAttendance: lastAttendance ? lastAttendance.sessionDate : null,
+            attendancePercentage: attendancePercentage,
             status: "In Progress",
           },
         });
@@ -574,7 +580,9 @@ app.post("/api/weekly-attendance-report", async (req, res) => {
             getWeek(att.sessionDate) === weekNumber &&
             new Date(att.sessionDate) >= startDate
           ) {
-            const sessionKey = `${att.sessionDate.toISOString().split('T')[0]}-${att.sessionType}`;
+            const sessionKey = `${
+              att.sessionDate.toISOString().split("T")[0]
+            }-${att.sessionType}`;
             if (!sessions[sessionKey]) {
               sessions[sessionKey] = [];
             }
@@ -717,22 +725,29 @@ cron.schedule("0 3 * * 1", async () => {
 
         const groupedSessions = {};
         for (const att of recentAttendances) {
-          const sessionKey = `${att.sessionDate.toISOString().split('T')[0]}-${att.sessionType}`;
+          const sessionKey = `${att.sessionDate.toISOString().split("T")[0]}-${
+            att.sessionType
+          }`;
           if (!groupedSessions[sessionKey]) {
             groupedSessions[sessionKey] = [];
           }
           groupedSessions[sessionKey].push(att);
         }
 
-        const processedSessions = Object.values(groupedSessions).map(sessionGroup => {
-          // Use the sessionDate of the first attendance record in the group as the representative date
-          const representativeDate = sessionGroup[0].sessionDate;
-          return { isPresent: sessionGroup.some(att => att.isPresent), sessionDate: representativeDate };
-        });
+        const processedSessions = Object.values(groupedSessions).map(
+          (sessionGroup) => {
+            // Use the sessionDate of the first attendance record in the group as the representative date
+            const representativeDate = sessionGroup[0].sessionDate;
+            return {
+              isPresent: sessionGroup.some((att) => att.isPresent),
+              sessionDate: representativeDate,
+            };
+          }
+        );
 
         const lastSessions = processedSessions
           .sort((a, b) => b.sessionDate.getTime() - a.sessionDate.getTime()) // This line will cause an error as processedSessions does not have sessionDate. I will fix this in the next step.
-          .slice(0, 4); 
+          .slice(0, 4);
 
         const presentCount = lastSessions.filter((att) => att.isPresent).length;
         const absentCount = lastSessions.length - presentCount;
@@ -782,12 +797,18 @@ cron.schedule("0 3 * * 1", async () => {
           return latest.sessionDate > current.sessionDate ? latest : current;
         }, recentAttendances[0]);
 
+        let attendancePercentage = 0;
+        if (lastSessions.length > 0) {
+          attendancePercentage = (presentCount / lastSessions.length) * 100;
+        }
+
         await prisma.mentee.update({
           where: { id: mentee.id },
           data: {
             priority: priority,
             lastAttendance: lastAttendance ? lastAttendance.sessionDate : null,
             status: "In Progress",
+            attendancePercentage: attendancePercentage,
           },
         });
       }
