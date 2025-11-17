@@ -8,19 +8,20 @@ datasource db {
 }
 
 model Mentee {
-  id             String        @id @default(uuid())
-  name           String
-  email          String        @unique
-  externalId     String?       @unique @map("external_id")
-  phone          String?
-  status         String @default("In Progress")
-  priority       String?
-  cohortBatch    String?       @map("cohort_batch")
-  lastAttendance DateTime?     @map("last_attendance")
-  currentWeek    Int?          @map("current_week")
-  attendances    Attendance[]
-  checkInNotes   CheckInNote[]
-  poc            String?
+  id                   String        @id @default(uuid())
+  name                 String
+  email                String        @unique
+  externalId           String?       @unique @map("external_id")
+  phone                String?
+  status               String        @default("In Progress")
+  priority             String?
+  cohortBatch          String?       @map("cohort_batch")
+  lastAttendance       DateTime?     @map("last_attendance")
+  attendancePercentage Float?        @map("attendance_percentage")
+  currentWeek          Int?          @map("current_week")
+  attendances          Attendance[]
+  checkInNotes         CheckInNote[]
+  poc                  String?
 
   @@map("mentees")
 }
@@ -67,6 +68,13 @@ model WeeklyAttendanceReport {
   createdAt    DateTime @default(now())
 
   @@unique([weekNumber, cohortBatch])
-
   @@map("weekly_attendance_reports")
+}
+
+model Poc {
+  id    BigInt     @id @default(autoincrement())
+  email String?
+  poc   String?
+
+  @@map("pocs")
 }
