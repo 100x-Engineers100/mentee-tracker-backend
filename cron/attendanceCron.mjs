@@ -23,7 +23,8 @@ const getLastTwoWeekendDates = () => {
   const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
   let lastSunday = new Date(today);
-  if (dayOfWeek === 0) { // If today is Sunday
+  if (dayOfWeek === 0) {
+    // If today is Sunday
     lastSunday.setDate(today.getDate());
   } else {
     lastSunday.setDate(today.getDate() - dayOfWeek); // Go back to the most recent past Sunday
@@ -73,7 +74,10 @@ const fetchAttendance = async () => {
       });
 
       if (response.data.code === 200) {
-        allAttendanceData.push(...response.data.data);
+        const filteredData = response.data.data.filter(record => 
+          record.batchName && record.batchName.includes("Cohort 6")
+        );
+        allAttendanceData.push(...filteredData);
       } else {
         console.error(
           `Error fetching attendance for ${date.toDateString()}:`,
