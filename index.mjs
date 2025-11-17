@@ -665,7 +665,6 @@ cron.schedule("0 3 * * 1", async () => {
   console.log("Running attendance fetch CRON job...");
   try {
     const attendanceData = await fetchAttendance();
-
     const externalMenteeIdsInAttendance = [
       ...new Set(attendanceData.map((record) => String(record.student_Id))),
     ];
@@ -731,6 +730,12 @@ cron.schedule("0 3 * * 1", async () => {
       skipDuplicates: true,
     });
 
+    const today = new Date();
+    const currentWeekNumber =
+      differenceInWeeks(today, PROGRAM_START_DATE, {
+        weekStartsOn: 1,
+      }) + 1; // +1 because differenceInWeeks is 0-indexed
+
     // After creating attendance records, update mentee priorities and last attendance
     for (const menteeId of externalMenteeIdsInAttendance) {
       const mentee = await prisma.mentee.findUnique({
@@ -744,30 +749,8 @@ cron.schedule("0 3 * * 1", async () => {
           isAfter(att.sessionDate, twoWeeksAgo)
         );
 
-        const groupedSessions = {};
-        for (const att of recentAttendances) {
-          const sessionKey = `${att.sessionDate.toISOString().split("T")[0]}-${
-            att.sessionType
-          }`;
-          if (!groupedSessions[sessionKey]) {
-            groupedSessions[sessionKey] = [];
-          }
-          groupedSessions[sessionKey].push(att);
-        }
-
-        const processedSessions = Object.values(groupedSessions).map(
-          (sessionGroup) => {
-            // Use the sessionDate of the first attendance record in the group as the representative date
-            const representativeDate = sessionGroup[0].sessionDate;
-            return {
-              isPresent: sessionGroup.some((att) => att.isPresent),
-              sessionDate: representativeDate,
-            };
-          }
-        );
-
-        const lastSessions = processedSessions
-          .sort((a, b) => b.sessionDate.getTime() - a.sessionDate.getTime()) // This line will cause an error as processedSessions does not have sessionDate. I will fix this in the next step.
+        const lastSessions = recentAttendances
+          .sort((a, b) => b.sessionDate.getTime() - a.sessionDate.getTime())
           .slice(0, 4);
 
         const presentCount = lastSessions.filter((att) => att.isPresent).length;
@@ -818,9 +801,20 @@ cron.schedule("0 3 * * 1", async () => {
           return latest.sessionDate > current.sessionDate ? latest : current;
         }, recentAttendances[0]);
 
+        // Calculate attendance percentage from PROGRAM_START_DATE
+        const totalSessionsSinceProgramStart = mentee.attendances.filter(
+          (att) => new Date(att.sessionDate) >= PROGRAM_START_DATE
+        );
+
+        const presentSessionsSinceProgramStart =
+          totalSessionsSinceProgramStart.filter((att) => att.isPresent).length;
+
         let attendancePercentage = 0;
-        if (lastSessions.length > 0) {
-          attendancePercentage = (presentCount / lastSessions.length) * 100;
+        if (totalSessionsSinceProgramStart.length > 0) {
+          attendancePercentage =
+            (presentSessionsSinceProgramStart /
+              totalSessionsSinceProgramStart.length) *
+            100;
         }
 
         await prisma.mentee.update({
@@ -828,17 +822,24 @@ cron.schedule("0 3 * * 1", async () => {
           data: {
             priority: priority,
             lastAttendance: lastAttendance ? lastAttendance.sessionDate : null,
-            status: "In Progress",
             attendancePercentage: attendancePercentage,
+            status: "In Progress",
+            currentWeek: currentWeekNumber,
           },
         });
       }
     }
+    // console.log("Attendance data saved to database successfully.");
 
     // Trigger weekly attendance report generation
     await axios.post(`${process.env.BACKEND_URL}/api/weekly-attendance-report`);
+
+    res.status(200).json({
+      message: "Manual attendance fetch and save completed successfully.",
+    });
   } catch (error) {
-    console.error("CRON job failed to fetch attendance:", error);
+    console.error("Manual attendance fetch failed:", error);
+    res.status(500).json({ error: "Failed to manually fetch attendance." });
   }
 });
 
