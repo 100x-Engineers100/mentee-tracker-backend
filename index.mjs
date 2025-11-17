@@ -596,8 +596,15 @@ app.post("/api/weekly-attendance-report", async (req, res) => {
       reports.push(reportData);
 
       // Save the report to the database
-      await prisma.weeklyAttendanceReport.create({
-        data: reportData,
+      await prisma.weeklyAttendanceReport.upsert({
+        where: {
+          weekNumber_cohortBatch: {
+            weekNumber: reportData.weekNumber,
+            cohortBatch: reportData.cohortBatch,
+          },
+        },
+        create: reportData,
+        update: reportData,
       });
 
       currentWeek = addWeeks(currentWeek, 1); // Move to the next week
