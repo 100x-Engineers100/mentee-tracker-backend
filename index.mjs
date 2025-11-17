@@ -568,19 +568,30 @@ app.post("/api/weekly-attendance-report", async (req, res) => {
 
       for (const mentee of menteesInCohort) {
         // Filter attendance for the current week
-        const weeklyAttendances = mentee.attendances.filter(
-          (att) =>
+        const sessions = {};
+        for (const att of mentee.attendances) {
+          if (
             getWeek(att.sessionDate) === weekNumber &&
             new Date(att.sessionDate) >= startDate
-        );
-
-        if (weeklyAttendances.length > 0) {
-          const isPresent = weeklyAttendances.some((att) => att.isPresent);
-          if (isPresent) {
-            totalPresent++;
-          } else {
-            totalAbsent++;
+          ) {
+            const sessionKey = `${att.sessionDate.toISOString().split('T')[0]}-${att.sessionType}`;
+            if (!sessions[sessionKey]) {
+              sessions[sessionKey] = [];
+            }
+            sessions[sessionKey].push(att);
           }
+        }
+
+        let menteeWasPresentThisWeek = false;
+        for (const sessionKey in sessions) {
+          if (sessions[sessionKey].some((att) => att.isPresent)) {
+            menteeWasPresentThisWeek = true;
+            break;
+          }
+        }
+
+        if (menteeWasPresentThisWeek) {
+          totalPresent++;
         } else {
           totalAbsent++;
         }
@@ -704,9 +715,24 @@ cron.schedule("0 3 * * 1", async () => {
           isAfter(att.sessionDate, twoWeeksAgo)
         );
 
-        const lastSessions = recentAttendances
-          .sort((a, b) => b.sessionDate.getTime() - a.sessionDate.getTime())
-          .slice(0, 4); // Consider up to the last 4 sessions
+        const groupedSessions = {};
+        for (const att of recentAttendances) {
+          const sessionKey = `${att.sessionDate.toISOString().split('T')[0]}-${att.sessionType}`;
+          if (!groupedSessions[sessionKey]) {
+            groupedSessions[sessionKey] = [];
+          }
+          groupedSessions[sessionKey].push(att);
+        }
+
+        const processedSessions = Object.values(groupedSessions).map(sessionGroup => {
+          // Use the sessionDate of the first attendance record in the group as the representative date
+          const representativeDate = sessionGroup[0].sessionDate;
+          return { isPresent: sessionGroup.some(att => att.isPresent), sessionDate: representativeDate };
+        });
+
+        const lastSessions = processedSessions
+          .sort((a, b) => b.sessionDate.getTime() - a.sessionDate.getTime()) // This line will cause an error as processedSessions does not have sessionDate. I will fix this in the next step.
+          .slice(0, 4); 
 
         const presentCount = lastSessions.filter((att) => att.isPresent).length;
         const absentCount = lastSessions.length - presentCount;

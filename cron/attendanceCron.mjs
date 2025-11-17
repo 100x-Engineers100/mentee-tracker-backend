@@ -19,51 +19,41 @@ const getDayTimestamps = (date) => {
 
 // Function to calculate the dates for the last two Fridays and Saturdays
 const getLastTwoWeekendDates = () => {
-  let searchDate = new Date(); // Start with today
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-  const dayOfWeek = searchDate.getDay(); // 0 = Sunday, 5 = Friday, 6 = Saturday
-
-  // If today is Friday or Saturday, adjust searchDate to the previous Sunday
-  // to ensure we only look at past weeks.
-  if (dayOfWeek === 5) {
-    // Friday
-    searchDate.setDate(searchDate.getDate() - 5); // Go back to last Sunday
-  } else if (dayOfWeek === 6) {
-    // Saturday
-    searchDate.setDate(searchDate.getDate() - 6); // Go back to last Sunday
-  }
-  // If today is Sunday, Monday, Tuesday, Wednesday, or Thursday,
-  // searchDate is already correctly set to look for previous weekends.
-
-  const weekendDates = new Set();
-  let daysChecked = 0;
-
-  // We need 4 dates (2 Fridays, 2 Saturdays)
-  // We'll check up to 21 days back to ensure we cover at least 3 full weeks
-  // (current week + 2 previous weeks).
-  while (weekendDates.size < 4 && daysChecked < 21) {
-    // Increased daysChecked limit for safety
-    const date = new Date(searchDate);
-    date.setDate(searchDate.getDate() - daysChecked);
-    const currentDayOfWeek = date.getDay();
-
-    if (currentDayOfWeek === 5 || currentDayOfWeek === 6) {
-      const dateString = date.toISOString().split("T")[0];
-      weekendDates.add(dateString);
-    }
-    daysChecked++;
-  }
-
-  // Convert back to Date objects and sort in ascending order
-  const sortedDates = Array.from(weekendDates)
-    .map((dateString) => new Date(dateString))
-    .sort((a, b) => a.getTime() - b.getTime());
-
-  if (new Date() > ATTENDANCE_START_DATE) {
-    return sortedDates.slice(-2); // Return the last two dates (one Friday, one Saturday)
+  let lastSunday = new Date(today);
+  if (dayOfWeek === 0) { // If today is Sunday
+    lastSunday.setDate(today.getDate());
   } else {
-    return sortedDates.slice(-4); // Return the last four dates
+    lastSunday.setDate(today.getDate() - dayOfWeek); // Go back to the most recent past Sunday
   }
+
+  // Calculate Friday and Saturday of the last full week
+  const lastWeekFriday = new Date(lastSunday);
+  lastWeekFriday.setDate(lastSunday.getDate() - 2);
+
+  const lastWeekSaturday = new Date(lastSunday);
+  lastWeekSaturday.setDate(lastSunday.getDate() - 1);
+
+  // Calculate the Sunday of the week before the last full week
+  const secondLastSunday = new Date(lastSunday);
+  secondLastSunday.setDate(lastSunday.getDate() - 7);
+
+  // Calculate Friday and Saturday of the second to last full week
+  const secondLastWeekFriday = new Date(secondLastSunday);
+  secondLastWeekFriday.setDate(secondLastSunday.getDate() - 2);
+
+  const secondLastWeekSaturday = new Date(secondLastSunday);
+  secondLastWeekSaturday.setDate(secondLastSunday.getDate() - 1);
+
+  // Return all four dates in ascending order
+  return [
+    secondLastWeekFriday,
+    secondLastWeekSaturday,
+    lastWeekFriday,
+    lastWeekSaturday,
+  ].sort((a, b) => a.getTime() - b.getTime());
 };
 
 const fetchAttendance = async () => {
@@ -100,9 +90,9 @@ const fetchAttendance = async () => {
   return allAttendanceData;
 };
 
-// console.log(
-//   "Test getLastTwoWeekendDates:",
-//   getLastTwoWeekendDates().map((d) => d.toDateString())
-// );
+console.log(
+  "Test getLastTwoWeekendDates:",
+  getLastTwoWeekendDates().map((d) => d.toDateString())
+);
 
 export { fetchAttendance };
