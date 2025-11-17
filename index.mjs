@@ -428,9 +428,7 @@ app.post("/api/run-attendance-cron-manually", async (req, res) => {
     // console.log("Attendance data saved to database successfully.");
 
     // Trigger weekly attendance report generation
-    await axios.post(
-      `${process.env.API_BASE_URL}/api/weekly-attendance-report`
-    );
+    await axios.post(`${process.env.BACKEND_URL}/api/weekly-attendance-report`);
 
     res.status(200).json({
       message: "Manual attendance fetch and save completed successfully.",
@@ -683,7 +681,7 @@ cron.schedule("0 3 * * 1", async () => {
 
     await prisma.attendance.createMany({
       data: formattedAttendanceData,
-      skipDuplicates: true, // Optional: to prevent errors if the same data is processed again
+      skipDuplicates: true,
     });
 
     // After creating attendance records, update mentee priorities and last attendance
@@ -756,15 +754,14 @@ cron.schedule("0 3 * * 1", async () => {
           data: {
             priority: priority,
             lastAttendance: lastAttendance ? lastAttendance.sessionDate : null,
+            status: "In Progress",
           },
         });
       }
     }
 
     // Trigger weekly attendance report generation
-    await axios.post(
-      `${process.env.API_BASE_URL}/api/weekly-attendance-report`
-    );
+    await axios.post(`${process.env.BACKEND_URL}/api/weekly-attendance-report`);
   } catch (error) {
     console.error("CRON job failed to fetch attendance:", error);
   }
