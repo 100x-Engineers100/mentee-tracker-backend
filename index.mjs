@@ -113,10 +113,11 @@ app.get("/mentees/:id", async (req, res) => {
 app.put("/mentees/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, poc } = req.body;
+    const { status, poc, phone } = req.body;
     const updateData = {};
     if (status) updateData.status = status;
     if (poc) updateData.poc = poc;
+    if (phone) updateData.phone = phone;
 
     const mentee = await prisma.mentee.update({
       where: { id },
