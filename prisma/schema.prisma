@@ -2,10 +2,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+
 
 model Mentee {
   id                   String        @id @default(uuid())
@@ -29,7 +26,7 @@ model Mentee {
 model Attendance {
   id          String   @id @default(uuid())
   menteeId    String   @map("mentee_id")
-  sessionDate DateTime @map("session_date") @db.Date
+  sessionDate DateTime @map("session_date")
   sessionType String   @map("session_type")
   isPresent   Boolean  @map("is_present")
   mentee      Mentee   @relation(fields: [menteeId], references: [id])
@@ -53,6 +50,7 @@ model CheckInNote {
   timestamp     DateTime
   noteContent   String   @map("note_content")
   executiveName String   @map("executive_name")
+  weekNumber    Int?     @map("week_number")
   mentee        Mentee   @relation(fields: [menteeId], references: [id])
 
   @@map("check_in_notes")

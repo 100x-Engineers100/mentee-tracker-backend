@@ -198,7 +198,16 @@ app.delete("/attendance/:id", async (req, res) => {
 // CheckInNote Routes
 app.post("/checkin-notes", async (req, res) => {
   try {
-    const checkInNote = await prisma.checkInNote.create({ data: req.body });
+    const { mentee, timestamp, noteContent, executiveName, weekNumber } = req.body;
+    const checkInNote = await prisma.checkInNote.create({
+      data: {
+        mentee: mentee,
+        timestamp: timestamp,
+        noteContent: noteContent,
+        executiveName: executiveName,
+        weekNumber: weekNumber,
+      },
+    });
     res.status(201).json(checkInNote);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -207,10 +216,75 @@ app.post("/checkin-notes", async (req, res) => {
 
 app.get("/checkin-notes", async (req, res) => {
   try {
-    const { menteeId } = req.query;
-    const checkInNotes = await prisma.checkInNote.findMany({
-      where: menteeId ? { menteeId: String(menteeId) } : {},
-    });
+    const { menteeId, weekNumber, cohortBatch } = req.query;
+    let whereClause = {};
+
+    if (menteeId) {
+      whereClause.menteeId = String(menteeId);
+    }
+
+    if (weekNumber) {
+      whereClause.weekNumber = parseInt(weekNumber, 10);
+    }
+
+    let checkInNotes;
+
+    if (cohortBatch) {
+      // If cohortBatch is provided, filter by it and include mentee details
+      checkInNotes = await prisma.checkInNote.findMany({
+        where: {
+          ...whereClause,
+          mentee: {
+            cohortBatch: String(cohortBatch),
+          },
+        },
+        include: {
+          mentee: {
+            select: { name: true, poc: true, status: true },
+          },
+        },
+        orderBy: {
+          timestamp: 'desc',
+        },
+      });
+
+      if (!weekNumber) {
+        // If no weekNumber, return only the latest note per mentee in the cohort
+        const latestNotesMap = new Map();
+        for (const note of checkInNotes) {
+          if (!latestNotesMap.has(note.menteeId) || new Date(note.timestamp) > new Date(latestNotesMap.get(note.menteeId).timestamp)) {
+            latestNotesMap.set(note.menteeId, note);
+          }
+        }
+        checkInNotes = Array.from(latestNotesMap.values());
+      }
+
+    } else {
+      // Original logic if no cohortBatch is provided
+      checkInNotes = await prisma.checkInNote.findMany({
+        where: whereClause,
+        include: {
+          mentee: {
+            select: { name: true, poc: true, status: true },
+          },
+        },
+        orderBy: {
+          timestamp: 'desc',
+        },
+      });
+
+      if (!weekNumber) {
+        // If no weekNumber, return only the latest note per mentee
+        const latestNotesMap = new Map();
+        for (const note of checkInNotes) {
+          if (!latestNotesMap.has(note.menteeId) || new Date(note.timestamp) > new Date(latestNotesMap.get(note.menteeId).timestamp)) {
+            latestNotesMap.set(note.menteeId, note);
+          }
+        }
+        checkInNotes = Array.from(latestNotesMap.values());
+      }
+    }
+
     res.json(checkInNotes);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -234,9 +308,13 @@ app.get("/checkin-notes/:id", async (req, res) => {
 app.put("/checkin-notes/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    const { noteContent, weekNumber } = req.body;
     const checkInNote = await prisma.checkInNote.update({
       where: { id },
-      data: req.body,
+      data: {
+        noteContent: noteContent,
+        weekNumber: weekNumber,
+      },
     });
     res.json(checkInNote);
   } catch (error) {
