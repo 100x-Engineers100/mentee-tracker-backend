@@ -198,7 +198,8 @@ app.delete("/attendance/:id", async (req, res) => {
 // CheckInNote Routes
 app.post("/checkin-notes", async (req, res) => {
   try {
-    const { mentee, timestamp, noteContent, executiveName, weekNumber } = req.body;
+    const { mentee, timestamp, noteContent, executiveName, weekNumber } =
+      req.body;
     const checkInNote = await prisma.checkInNote.create({
       data: {
         mentee: mentee,
@@ -244,7 +245,7 @@ app.get("/checkin-notes", async (req, res) => {
           },
         },
         orderBy: {
-          timestamp: 'desc',
+          timestamp: "desc",
         },
       });
 
@@ -252,13 +253,16 @@ app.get("/checkin-notes", async (req, res) => {
         // If no weekNumber, return only the latest note per mentee in the cohort
         const latestNotesMap = new Map();
         for (const note of checkInNotes) {
-          if (!latestNotesMap.has(note.menteeId) || new Date(note.timestamp) > new Date(latestNotesMap.get(note.menteeId).timestamp)) {
+          if (
+            !latestNotesMap.has(note.menteeId) ||
+            new Date(note.timestamp) >
+              new Date(latestNotesMap.get(note.menteeId).timestamp)
+          ) {
             latestNotesMap.set(note.menteeId, note);
           }
         }
         checkInNotes = Array.from(latestNotesMap.values());
       }
-
     } else {
       // Original logic if no cohortBatch is provided
       checkInNotes = await prisma.checkInNote.findMany({
@@ -269,7 +273,7 @@ app.get("/checkin-notes", async (req, res) => {
           },
         },
         orderBy: {
-          timestamp: 'desc',
+          timestamp: "desc",
         },
       });
 
@@ -277,7 +281,11 @@ app.get("/checkin-notes", async (req, res) => {
         // If no weekNumber, return only the latest note per mentee
         const latestNotesMap = new Map();
         for (const note of checkInNotes) {
-          if (!latestNotesMap.has(note.menteeId) || new Date(note.timestamp) > new Date(latestNotesMap.get(note.menteeId).timestamp)) {
+          if (
+            !latestNotesMap.has(note.menteeId) ||
+            new Date(note.timestamp) >
+              new Date(latestNotesMap.get(note.menteeId).timestamp)
+          ) {
             latestNotesMap.set(note.menteeId, note);
           }
         }
@@ -427,10 +435,19 @@ app.post("/api/run-attendance-cron-manually", async (req, res) => {
         isPresent: record.studentAttendanceStatus === "P",
       }));
 
-    await prisma.attendance.createMany({
-      data: formattedAttendanceData,
-      skipDuplicates: true,
-    });
+    for (const record of formattedAttendanceData) {
+      await prisma.attendance.upsert({
+        where: {
+          menteeId_sessionDate_sessionType: {
+            menteeId: record.menteeId,
+            sessionDate: record.sessionDate,
+            sessionType: record.sessionType,
+          },
+        },
+        update: { isPresent: record.isPresent },
+        create: record,
+      });
+    }
 
     const today = new Date();
     const currentWeekNumber =
