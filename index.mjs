@@ -15,7 +15,7 @@ import axios from "axios";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
 import cron from "node-cron";
-import { fetchAttendance } from "./cron/attendanceCron.mjs";
+import { fetchAttendance, getDayTimestamps } from "./cron/attendanceCron.mjs";
 
 dotenv.config();
 
@@ -559,6 +559,238 @@ app.post("/api/run-attendance-cron-manually", async (req, res) => {
   } catch (error) {
     console.error("Manual attendance fetch failed:", error);
     res.status(500).json({ error: "Failed to manually fetch attendance." });
+  }
+});
+
+app.post("/api/run-attendance-cron-from-nov7", async (req, res) => {
+  try {
+    const NOV_7_2025 = new Date("2025-11-07T00:00:00.000Z");
+    const today = new Date();
+
+    const datesToFetch = [];
+    let currentDate = new Date(NOV_7_2025);
+
+    while (currentDate <= today) {
+      // Only consider Fridays and Saturdays
+      const dayOfWeek = currentDate.getDay();
+      if (dayOfWeek === 5 || dayOfWeek === 6) {
+        // 5 = Friday, 6 = Saturday
+        datesToFetch.push(new Date(currentDate));
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    const allAttendanceData = [];
+
+    for (const date of datesToFetch) {
+      const { start, end } = getDayTimestamps(date);
+      const apiUrl = `${process.env.API_BASE_URL}/report/csv?apikey=${process.env.API_KEY}\u0026response_type=1\u0026ORGID=${process.env.ORG_ID}\u0026report_type=55\u0026organization_id=${process.env.ORG_ID}\u0026start_time=${start}\u0026end_time=${end}`;
+
+      try {
+        const response = await axios.get(apiUrl, {
+          headers: {
+            apikey: process.env.API_KEY,
+            ORGID: process.env.ORG_ID,
+          },
+        });
+
+        if (response.data.code === 200) {
+          const filteredData = response.data.data.filter(
+            (record) => record.batch_Id === 177242
+          );
+          allAttendanceData.push(...filteredData);
+        } else {
+          console.error(
+            `Error fetching attendance for ${date.toDateString()}:`,
+            response.data.message
+          );
+        }
+      } catch (error) {
+        console.error(
+          `Failed to fetch attendance for ${date.toDateString()}:`,
+          error.message
+        );
+      }
+    }
+
+    const externalMenteeIdsInAttendance = [
+      ...new Set(allAttendanceData.map((record) => String(record.student_Id))),
+    ];
+
+    const existingMentees = await prisma.mentee.findMany({
+      where: {
+        externalId: {
+          in: externalMenteeIdsInAttendance,
+        },
+      },
+      select: {
+        id: true,
+        externalId: true,
+      },
+    });
+
+    const menteeMap = new Map(
+      existingMentees.map((mentee) => [mentee.externalId, mentee.id])
+    );
+
+    const formattedAttendanceData = allAttendanceData
+      .filter((record) => menteeMap.has(String(record.student_Id)))
+      .map((record) => ({
+        menteeId: menteeMap.get(String(record.student_Id)),
+        sessionDate: (() => {
+          if (record.classDate) {
+            const parts = record.classDate.match(
+              /(\d{1,2})\s([A-Za-z]{3})\s(\d{4})/
+            );
+            if (parts) {
+              const [_, day, monthStr, year] = parts;
+              const monthMap = {
+                Jan: 0,
+                Feb: 1,
+                Mar: 2,
+                Apr: 3,
+                May: 4,
+                Jun: 5,
+                Jul: 6,
+                Aug: 7,
+                Sep: 8,
+                Oct: 9,
+                Nov: 10,
+                Dec: 11,
+              };
+              const month = monthMap[monthStr];
+              if (month !== undefined) {
+                const date = new Date(year, month, day);
+                if (!isNaN(date.getTime())) {
+                  return date;
+                }
+              }
+            }
+          }
+          return null;
+        })(),
+        sessionType: record.sessionName,
+        isPresent: record.studentAttendanceStatus === "P",
+      }));
+
+    for (const record of formattedAttendanceData) {
+      await prisma.attendance.upsert({
+        where: {
+          menteeId_sessionDate_sessionType: {
+            menteeId: record.menteeId,
+            sessionDate: record.sessionDate,
+            sessionType: record.sessionType,
+          },
+        },
+        update: { isPresent: record.isPresent },
+        create: record,
+      });
+    }
+
+    const currentWeekNumber =
+      differenceInWeeks(today, NOV_7_2025, { weekStartsOn: 1 }) + 1;
+
+    for (const menteeId of externalMenteeIdsInAttendance) {
+      const mentee = await prisma.mentee.findUnique({
+        where: { externalId: menteeId },
+        include: { attendances: true },
+      });
+
+      if (mentee) {
+        const twoWeeksAgo = subWeeks(new Date(), 2);
+        const recentAttendances = mentee.attendances.filter((att) =>
+          isAfter(att.sessionDate, twoWeeksAgo)
+        );
+
+        const lastSessions = recentAttendances
+          .sort((a, b) => b.sessionDate.getTime() - a.sessionDate.getTime())
+          .slice(0, 4);
+
+        const presentCount = lastSessions.filter((att) => att.isPresent).length;
+        const absentCount = lastSessions.length - presentCount;
+
+        let priority = "P4"; // Default to P4 (present for last 4 sessions)
+
+        if (lastSessions.length >= 4) {
+          // If 4 or more sessions are available
+          if (absentCount === 4) {
+            priority = "P0";
+          } else if (absentCount === 3) {
+            priority = "P1";
+          } else if (absentCount === 2) {
+            priority = "P2";
+          } else if (absentCount === 1) {
+            priority = "P3";
+          } else {
+            // absentCount === 0
+            priority = "P4";
+          }
+        } else if (lastSessions.length === 2) {
+          // If exactly 2 sessions are available
+          if (absentCount === 2) {
+            // Absent for 2 times from last 2 sessions
+            priority = "P0";
+          } else if (absentCount === 1) {
+            // Absent for 1 time from last 2 sessions
+            priority = "P1";
+          } else {
+            // absentCount === 0, Present for 2 times from last 2 sessions
+            priority = "P2";
+          }
+        } else {
+          // For cases with 0, 1, or 3 sessions, or more than 4, we can define a default or more granular logic.
+          // The user specified P4 for 0 absences in last 4 sessions, and P2 for 0 absences in last 2 sessions.
+          // Let's assume P4 is the general default for "good" attendance if specific rules don't apply.
+          if (absentCount === 0) {
+            priority = "P4"; // Present for all available sessions
+          } else if (absentCount === lastSessions.length) {
+            priority = "P0"; // Absent for all available sessions
+          } else {
+            priority = "P3"; // Default for mixed attendance not covered by specific rules
+          }
+        }
+
+        const lastAttendance = recentAttendances.reduce((latest, current) => {
+          return latest.sessionDate > current.sessionDate ? latest : current;
+        }, recentAttendances[0]);
+
+        // Calculate attendance percentage from NOV_7_2025
+        const totalSessionsSinceProgramStart = mentee.attendances.filter(
+          (att) => new Date(att.sessionDate) >= NOV_7_2025
+        );
+
+        const presentSessionsSinceProgramStart =
+          totalSessionsSinceProgramStart.filter((att) => att.isPresent).length;
+
+        let attendancePercentage = 0;
+        if (totalSessionsSinceProgramStart.length > 0) {
+          attendancePercentage =
+            (presentSessionsSinceProgramStart /
+              totalSessionsSinceProgramStart.length) *
+            100;
+        }
+
+        await prisma.mentee.update({
+          where: { id: mentee.id },
+          data: {
+            priority: priority,
+            lastAttendance: lastAttendance ? lastAttendance.sessionDate : null,
+            attendancePercentage: attendancePercentage,
+            status: "In Progress",
+            currentWeek: currentWeekNumber,
+          },
+        });
+      }
+    }
+
+    await axios.post(`${process.env.BACKEND_URL}/api/weekly-attendance-report`);
+
+    res.status(200).json({
+      message: "Attendance fetch and save from Nov 7th completed successfully.",
+    });
+  } catch (error) {
+    console.error("Attendance fetch from Nov 7th failed:", error);
+    res.status(500).json({ error: "Failed to fetch attendance from Nov 7th." });
   }
 });
 

@@ -74,8 +74,8 @@ const fetchAttendance = async () => {
       });
 
       if (response.data.code === 200) {
-        const filteredData = response.data.data.filter(record => 
-          record.batchName && record.batchName.includes("Cohort 6")
+        const filteredData = response.data.data.filter(
+          (record) => record.batchName && record.batchName.includes("Cohort 6")
         );
         allAttendanceData.push(...filteredData);
       } else {
@@ -99,4 +99,4 @@ console.log(
   getLastTwoWeekendDates().map((d) => d.toDateString())
 );
 
-export { fetchAttendance };
+export { fetchAttendance, getDayTimestamps };
