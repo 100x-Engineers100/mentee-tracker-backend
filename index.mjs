@@ -1295,8 +1295,25 @@ cron.schedule("0 3 * * 1", async () => {
   }
 });
 
+app.get("/api/alerts", async (req, res) => {
+  try {
+    const alerts = await prisma.alert.findMany({
+      where: { status: "active" },
+      include: {
+        mentee: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+    res.json(alerts);
+  } catch (error) {
+    console.error("Error fetching alerts:", error);
+    res.status(500).json({ error: "Failed to fetch alerts." });
+  }
+});
+
 app.listen(PORT, () => {
-  // console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 // External Mentee API Route
