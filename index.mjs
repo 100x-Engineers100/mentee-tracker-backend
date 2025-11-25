@@ -542,10 +542,68 @@ app.post("/api/run-attendance-cron-manually", async (req, res) => {
             priority: priority,
             lastAttendance: lastAttendance ? lastAttendance.sessionDate : null,
             attendancePercentage: attendancePercentage,
-            status: "In Progress",
+            status: "In Progress", // Default to In Progress
             currentWeek: currentWeekNumber,
           },
         });
+
+        // Check if a check-in note exists for the current week
+        const checkInNoteExists = await prisma.checkInNote.findFirst({
+          where: {
+            menteeId: mentee.id,
+            weekNumber: currentWeekNumber,
+          },
+        });
+
+        // If a check-in note exists, update the status to "Completed"
+        if (checkInNoteExists) {
+          await prisma.mentee.update({
+            where: { id: mentee.id },
+            data: {
+              status: "Completed",
+            },
+          });
+        }
+
+        // Check for 4 consecutive weeks of missing check-in notes
+        let missingCheckInWeeks = 0;
+        for (let i = 0; i < 4; i++) {
+          const weekToCheck = currentWeekNumber - 1 - i; // Check previous 4 weeks
+          if (weekToCheck < 1) break; // Don't go before week 1
+
+          const checkInNoteForWeek = await prisma.checkInNote.findFirst({
+            where: {
+              menteeId: mentee.id,
+              weekNumber: weekToCheck,
+            },
+          });
+
+          if (!checkInNoteForWeek) {
+            missingCheckInWeeks++;
+          } else {
+            break; // Break if a check-in note is found within the 4 weeks
+          }
+        }
+
+        if (missingCheckInWeeks >= 4) {
+          // Create an alert if 4 or more consecutive weeks have no check-in notes
+          const existingAlert = await prisma.alert.findFirst({
+            where: {
+              menteeId: mentee.id,
+              status: "active",
+              message: "No check-in notes for 4 consecutive weeks.",
+            },
+          });
+
+          if (!existingAlert) {
+            await prisma.alert.create({
+              data: {
+                menteeId: mentee.id,
+                message: "No check-in notes for 4 consecutive weeks.",
+              },
+            });
+          }
+        }
       }
     }
     // console.log("Attendance data saved to database successfully.");
@@ -990,7 +1048,6 @@ app.post("/api/weekly-attendance-report", async (req, res) => {
 });
 
 cron.schedule("0 3 * * 1", async () => {
-  console.log("Running attendance fetch CRON job...");
   try {
     const attendanceData = await fetchAttendance();
     const externalMenteeIdsInAttendance = [
@@ -1053,10 +1110,19 @@ cron.schedule("0 3 * * 1", async () => {
         isPresent: record.studentAttendanceStatus === "P",
       }));
 
-    await prisma.attendance.createMany({
-      data: formattedAttendanceData,
-      skipDuplicates: true,
-    });
+    for (const record of formattedAttendanceData) {
+      await prisma.attendance.upsert({
+        where: {
+          menteeId_sessionDate_sessionType: {
+            menteeId: record.menteeId,
+            sessionDate: record.sessionDate,
+            sessionType: record.sessionType,
+          },
+        },
+        update: { isPresent: record.isPresent },
+        create: record,
+      });
+    }
 
     const today = new Date();
     const currentWeekNumber =
@@ -1151,10 +1217,68 @@ cron.schedule("0 3 * * 1", async () => {
             priority: priority,
             lastAttendance: lastAttendance ? lastAttendance.sessionDate : null,
             attendancePercentage: attendancePercentage,
-            status: "In Progress",
+            status: "In Progress", // Default to In Progress
             currentWeek: currentWeekNumber,
           },
         });
+
+        // Check if a check-in note exists for the current week
+        const checkInNoteExists = await prisma.checkInNote.findFirst({
+          where: {
+            menteeId: mentee.id,
+            weekNumber: currentWeekNumber,
+          },
+        });
+
+        // If a check-in note exists, update the status to "Completed"
+        if (checkInNoteExists) {
+          await prisma.mentee.update({
+            where: { id: mentee.id },
+            data: {
+              status: "Completed",
+            },
+          });
+        }
+
+        // Check for 4 consecutive weeks of missing check-in notes
+        let missingCheckInWeeks = 0;
+        for (let i = 0; i < 4; i++) {
+          const weekToCheck = currentWeekNumber - 1 - i; // Check previous 4 weeks
+          if (weekToCheck < 1) break; // Don't go before week 1
+
+          const checkInNoteForWeek = await prisma.checkInNote.findFirst({
+            where: {
+              menteeId: mentee.id,
+              weekNumber: weekToCheck,
+            },
+          });
+
+          if (!checkInNoteForWeek) {
+            missingCheckInWeeks++;
+          } else {
+            break; // Break if a check-in note is found within the 4 weeks
+          }
+        }
+
+        if (missingCheckInWeeks >= 4) {
+          // Create an alert if 4 or more consecutive weeks have no check-in notes
+          const existingAlert = await prisma.alert.findFirst({
+            where: {
+              menteeId: mentee.id,
+              status: "active",
+              message: "No check-in notes for 4 consecutive weeks.",
+            },
+          });
+
+          if (!existingAlert) {
+            await prisma.alert.create({
+              data: {
+                menteeId: mentee.id,
+                message: "No check-in notes for 4 consecutive weeks.",
+              },
+            });
+          }
+        }
       }
     }
     // console.log("Attendance data saved to database successfully.");

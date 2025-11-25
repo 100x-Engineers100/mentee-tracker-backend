@@ -22,6 +22,7 @@ model Mentee {
   attendances          Attendance[]
   checkInNotes         CheckInNote[]
   poc                  String?
+  alerts               Alert[]
 
   @@map("mentees")
 }
@@ -79,4 +80,15 @@ model Poc {
   poc   String?
 
   @@map("pocs")
+}
+
+model Alert {
+  id        String   @id @default(uuid())
+  menteeId  String   @map("mentee_id")
+  mentee    Mentee   @relation(fields: [menteeId], references: [id])
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+  status    String   @default("active") // e.g., "active", "resolved"
+
+  @@map("alerts")
 }
