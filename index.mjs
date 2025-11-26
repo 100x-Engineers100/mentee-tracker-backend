@@ -200,6 +200,12 @@ app.post("/checkin-notes", async (req, res) => {
   try {
     const { mentee, timestamp, noteContent, executiveName, weekNumber } =
       req.body;
+
+    if (weekNumber === null || weekNumber === undefined) {
+      return res
+        .status(400)
+        .json({ error: "Week number is required for check-in notes." });
+    }
     const checkInNote = await prisma.checkInNote.create({
       data: {
         mentee: mentee,
@@ -317,6 +323,12 @@ app.put("/checkin-notes/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { noteContent, weekNumber } = req.body;
+
+    if (weekNumber === null || weekNumber === undefined) {
+      return res
+        .status(400)
+        .json({ error: "Week number is required for check-in notes." });
+    }
     const checkInNote = await prisma.checkInNote.update({
       where: { id },
       data: {
